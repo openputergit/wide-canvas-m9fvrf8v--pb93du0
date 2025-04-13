@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Tracker System</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .status-pending { background-color: #FEF3C7; }
+        .status-in-progress { background-color: #DBEAFE; }
+        .status-completed { background-color: #D1FAE5; }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        @media (max-width: 768px) {
+            .table-container {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div id="app" class="min-h-screen">
+        <nav class="bg-blue-600 text-white p-4">
+            <div class="container mx-auto flex justify-between items-center">
+                <h1 class="text-2xl font-bold">Request Tracker</h1>
+                <div class="flex items-center gap-4">
+                    <span v-if="currentUser">Welcome, {{ currentUser.name }}</span>
+                    <button @click="showUserModal = true" class="bg-blue-700 hover:bg-blue-800 px-3 py-1 rounded-md">
+                        <i class="bi bi-person-circle mr-1"></i>
+                        {{ currentUser ? 'Switch User' : 'Login' }}
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <main class="container mx-auto p-4">
+            <!-- Tabs -->
+            <div class="border-b border-gray-200 mb-6">
+                <ul class="flex flex-wrap -mb-px">
+                    <li class="mr-2">
+                        <button @click="activeTab = 'requests'" 
+                            class="inline-block p-4 rounded-t-lg" 
+                            :class="activeTab === 'requests' ? 'border-b-2 border-blue-600 text-blue-600' : 'hover:text-gray-600 hover:border-gray-300'">
+                            Requests
+                        </button>
+                    </li>
+                    <li class="mr-2">
+                        <button @click="activeTab = 'reports'" 
+                            class="inline-block p-4 rounded-t-lg" 
+                            :class="activeTab === 'reports' ? 'border-b-2 border-blue-600 text-blue-600' : 'hover:text-gray-600 hover:border-gray-300'">
+                            Reports
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Requests Tab -->
+            <div v-if="activeTab === 'requests'">
+                <div class="mb-6 flex flex-wrap gap-4 justify-between items-center">
+                    <button @click="createRequest()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
+                        <i class="bi bi-plus-lg"></i> New Request
+                    </button>
+                    <div class="flex flex-wrap gap-2">
+                        <input v-model="searchQuery" type="text" placeholder="Search requests..." 
+                               class="border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <select v-model="statusFilter" class="border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Status</option>
+                            <option value="Pending">Pending</option>
+                            <option value="In Progress">In Progress</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow table-container">
+                    <table class="w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">RT Date</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Assigned To</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Problem</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time Taken</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            <tr v-for="request in filteredRequests" :key="request.id" class="hover:bg-gray-50">
+                                <td class="px-6 py-4 whitespace-nowrap">{{request.date}}</td>
+                                <td class="px-6 py-4">{{request.company}}</td>
+                                <td class="px-6 py-4">{{request.assignedTo}}</td>
+                                <td class="px-6 py-4">{{request.problem}}</td>
+                                <td class="px-6 py-4">
+                                    <span :class="{
+                                        'px-2 py-1 rounded-full text-xs font-medium': true,
+                                        'status-pending': request.status === 'Pending',
+                                        'status-in-progress': request.status === 'In Progress',
+                                        'status-completed': request.status === 'Completed'
+                                    }">{{request.status}}</span>
+                                </td>
+                                <td class="px-6 py-4">{{request.timeTaken}}</td>
+                                <td class="px-6 py-4 whitespace-nowrap">
+                                    <button @click="editRequest(request)" class="text-blue-600 hover:text-blue-800 mr-2">
+                                        <i class="bi bi-pencil"></i>
+                                    </button>
+                                    <button @click="deleteRequest(request.id)" class="text-red-600 hover:text-red-800">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <tr v-if="filteredRequests.length === 0">
+                                <td colspan="7" class="px-6 py-4 text-center text-gray-500">No requests found</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Reports Tab -->
+            <div v-if="activeTab === 'reports'" class="space-y-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="text-lg font-medium text-gray-800 mb-4">Status Distribution</h3>
+                        <div class="chart-container">
+                            <canvas id="statusChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-lg shadow p-4">
+                        <h3 class="text-lg font-medium text-gray-800 mb-4">Tasks by User</h3>
+                        <div class="chart-container">
+                            <canvas id="userChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-lg font-medium text-gray-800 mb-4">Time Taken Analysis</h3>
+                    <div class="chart-container">
+                        <canvas id="timeChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-4">
+                    <h3 class="text-lg font-medium text-gray-800 mb-4">Performance Statistics</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                            <p class="text-sm text-gray-500">Average Completion Time</p>
+                            <p class="text-2xl font-semibold text-blue-700">{{ averageCompletionTime }}</p>
+                        </div>
+                        <div class="bg-green-50 p-4 rounded-lg border border-green-100">
+                            <p class="text-sm text-gray-500">Completed Requests</p>
+                            <p class="text-2xl font-semibold text-green-700">{{ completedRequestsCount }}</p>
+                        </div>
+                        <div class="bg-yellow-50 p-4 rounded-lg border border-yellow-100">
+                            <p class="text-sm text-gray-500">Pending Requests</p>
+                            <p class="text-2xl font-semibold text-yellow-700">{{ pendingRequestsCount }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Add/Edit Modal -->
+        <div v-if="showAddModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-lg p-6 w-full max-w-md">
+                <h2 class="text-xl font-bold mb-4">{{editingRequest ? 'Edit Request' : 'New Request'}}</h2>
+                <form @submit.prevent="saveRequest" class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Company Name</label>
+                        <input v-model="currentRequest.company" type="text" required
+                               class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Assigned To</label>
+                        <select v-model="currentRequest.assignedTo" required
+                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500">
+                            <option value="">Select a user</option>
+                            <option v-for="user in users" :value="user.name">{{ user.name }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Problem Statement</label>
+                        <textarea v-model="currentRequest.problem" required rows="3"
+                                  class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500"></textarea>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Status</label>
+                        <select v-model="currentRequest.status" required
+                                class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500">
+                            <option>Pending</option>
+                            <option>In Progress</option>
+                            <option>Completed</option>
+                        </select>
+                    </div>
+                    <div v-if="currentRequest.status === 'Completed' || currentRequest.timeTaken !== '0h'">
+                        <label class="block text-sm font-medium text-gray-700">Time Taken (hours)</label>
+                        <input v-model="timeTakenHours" type="number" step="0.1" min="0"
+                               class="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:border-blue-500 focus:outline-none focus:ring-blue-500">
+                    </div>
+                    <div class="flex justify-end gap-2">
+                        <button type="button" @click="showAddModal = false"
+                                class="px-4 py-2 border rounded-md hover:bg-gray-50">Cancel</button>
+                        <button type="submit"
+                                class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- User Modal -->
+        <div v-if="showUserModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-lg p-6 w-full max-w-md">
+                <h2 class="text-xl font-bold mb-4">Select User</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
+                    <button 
+                        v-for="user in users" 
+                        :key="user.id"
+                        @click="selectUser(user)"
+                        class="flex items-center p-3 border rounded-lg hover:bg-gray-50 transition"
+                        :class="{'border-blue-500 bg-blue-50': currentUser && currentUser.id === user.id}"
+                    >
+                        <div class="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 mr-3">
+                            <i class="bi bi-person-fill"></i>
+                        </div>
+                        <div class="text-left">
+                            <p class="font-medium">{{ user.name }}</p>
+                            <p class="text-sm text-gray-500">{{ user.role }}</p>
+                        </div>
+                    </button>
+                </div>
+                <div class="mt-4 flex justify-end">
+                    <button @click="showUserModal = false" class="px-4 py-2 border rounded-md hover:bg-gray-50">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, onMounted, watch } = Vue
+
+        createApp({
+            setup() {
+                // State
+                const requests = ref([]);
+                const showAddModal = ref(false);
+                const showUserModal = ref(false);
+                const currentRequest = ref({});
+                const editingRequest = ref(null);
+                const searchQuery = ref('');
+                const statusFilter = ref('');
+                const activeTab = ref('requests');
+                const currentUser = ref(null);
+                const timeTakenHours = ref(0);
+                
+                // Create 30 mock users
+                const users = ref([]);
+                for (let i = 1; i <= 30; i++) {
+                    const roles = ['Support Agent', 'Technician', 'Engineer', 'Manager'];
+                    users.value.push({
+                        id: i,
+                        name: `User ${i}`,
+                        role: roles[Math.floor(Math.random() * roles.length)]
+                    });
+                }
+
+                // Computed properties
+                const filteredRequests = computed(() => {
+                    return requests.value.filter(request => {
+                        const matchesSearch = !searchQuery.value || 
+                            Object.values(request).some(value => 
+                                String(value).toLowerCase().includes(searchQuery.value.toLowerCase())
+                            );
+                        const matchesStatus = !statusFilter.value || 
+                            request.status === statusFilter.value;
+                        return matchesSearch && matchesStatus;
+                    });
+                });
+
+                // Statistics
+                const completedRequestsCount = computed(() => {
+                    return requests.value.filter(req => req.status === 'Completed').length;
+                });
+
+                const pendingRequestsCount = computed(() => {
+                    return requests.value.filter(req => req.status === 'Pending').length;
+                });
+
+                const averageCompletionTime = computed(() => {
+                    const completedRequests = requests.value.filter(req => req.status === 'Completed');
+                    if (completedRequests.length === 0) return '0h';
+
+                    let totalHours = 0;
+                    completedRequests.forEach(req => {
+                        totalHours += parseFloat(req.timeTaken.replace('h', '')) || 0;
+                    });
+                    
+                    return (totalHours / completedRequests.length).toFixed(1) + 'h';
+                });
+
+                // Methods
+                function createRequest() {
+                    editingRequest.value = null;
+                    currentRequest.value = {
+                        id: Date.now(),
+                        date: new Date().toISOString().split('T')[0],
+                        company: '',
+                        assignedTo: currentUser.value ? currentUser.value.name : '',
+                        problem: '',
+                        status: 'Pending',
+                        timeTaken: '0h'
+                    };
+                    timeTakenHours.value = 0;
+                    showAddModal.value = true;
+                }
+
+                function editRequest(request) {
+                    editingRequest.value = request.id;
+                    currentRequest.value = { ...request };
+                    timeTakenHours.value = parseFloat(request.timeTaken.replace('h', '')) || 0;
+                    showAddModal.value = true;
+                }
+
+                function saveRequest() {
+                    // Update time taken field
+                    currentRequest.value.timeTaken = timeTakenHours.value + 'h';
+
+                    if (editingRequest.value) {
+                        const index = requests.value.findIndex(r => r.id === editingRequest.value);
+                        if (index !== -1) {
+                            requests.value[index] = { ...currentRequest.value };
+                        }
+                    } else {
+                        requests.value.push({ ...currentRequest.value });
+                    }
+                    showAddModal.value = false;
+                    saveToLocalStorage();
+                    updateCharts();
+                }
+
+                function deleteRequest(id) {
+                    if (confirm('Are you sure you want to delete this request?')) {
+                        requests.value = requests.value.filter(r => r.id !== id);
+                        saveToLocalStorage();
+                        updateCharts();
+                    }
+                }
+
+                function selectUser(user) {
+                    currentUser.value = user;
+                    localStorage.setItem('currentUser', JSON.stringify(user));
+                    showUserModal.value = false;
+                }
+
+                function saveToLocalStorage() {
+                    localStorage.setItem('requests', JSON.stringify(requests.value));
+                }
+
+                function loadFromLocalStorage() {
+                    const savedRequests = localStorage.getItem('requests');
+                    if (savedRequests) {
+                        requests.value = JSON.parse(savedRequests);
+                    }
+
+                    const savedUser = localStorage.getItem('currentUser');
+                    if (savedUser) {
+                        currentUser.value = JSON.parse(savedUser);
+                    }
+                }
+
+                // Chart functions
+                let statusChart, userChart, timeChart;
+
+                function initCharts() {
+                    // Status distribution chart
+                    const statusCtx = document.getElementById('statusChart');
+                    statusChart = new Chart(statusCtx, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['Pending', 'In Progress', 'Completed'],
+                            datasets: [{
+                                data: [0, 0, 0],
+                                backgroundColor: ['#FEF3C7', '#DBEAFE', '#D1FAE5'],
+                                borderColor: ['#F59E0B', '#3B82F6', '#10B981'],
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: {
+                                    position: 'right',
+                                }
+                            }
+                        }
+                    });
+
+                    // User tasks chart
+                    const userCtx = document.getElementById('userChart');
+                    userChart = new Chart(userCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: 'Assigned Tasks',
+                                data: [],
+                                backgroundColor: 'rgba(59, 130, 246, 0.5)',
+                                borderColor: 'rgba(59, 130, 246, 1)',
+                                borderWidth: 1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    ticks: { precision: 0 }
+                                }
+                            }
+                        }
+                    });
+
+                    // Time taken chart
+                    const timeCtx = document.getElementById('timeChart');
+                    timeChart = new Chart(timeCtx, {
+                        type: 'line',
+                        data: {
+                            labels: [],
+                            datasets: [{
+                                label: 'Time Taken (hours)',
+                                data: [],
+                                backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                                borderColor: 'rgba(16, 185, 129, 1)',
+                                borderWidth: 2,
+                                tension: 0.1
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            scales: {
+                                y: {
+                                    beginAtZero: true,
+                                    title: {
+                                        display: true,
+                                        text: 'Hours'
+                                    }
+                                },
+                                x: {
+                                    title: {
+                                        display: true,
+                                        text: 'Request'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                function updateCharts() {
+                    if (!statusChart || !userChart || !timeChart) return;
+
+                    // Update status chart
+                    const statusCounts = {
+                        'Pending': 0,
+                        'In Progress': 0,
+                        'Completed': 0
+                    };
+
+                    requests.value.forEach(req => {
+                        if (statusCounts[req.status] !== undefined) {
+                            statusCounts[req.status]++;
+                        }
+                    });
+
+                    statusChart.data.datasets[0].data = [
+                        statusCounts['Pending'],
+                        statusCounts['In Progress'],
+                        statusCounts['Completed']
+                    ];
+                    statusChart.update();
+
+                    // Update user chart
+                    const userCounts = {};
+                    requests.value.forEach(req => {
+                        if (req.assignedTo) {
+                            userCounts[req.assignedTo] = (userCounts[req.assignedTo] || 0) + 1;
+                        }
+                    });
+
+                    const userLabels = Object.keys(userCounts).slice(0, 10); // Limit to top 10
+                    const userData = userLabels.map(label => userCounts[label]);
+                    
+                    userChart.data.labels = userLabels;
+                    userChart.data.datasets[0].data = userData;
+                    userChart.update();
+
+                    // Update time chart
+                    const completedReqs = requests.value
+                        .filter(req => req.status === 'Completed')
+                        .sort((a, b) => new Date(a.date) - new Date(b.date));
+                    
+                    const timeLabels = completedReqs.map(req => req.company.substring(0, 10) + '...');
+                    const timeData = completedReqs.map(req => parseFloat(req.timeTaken.replace('h', '')) || 0);
+                    
+                    timeChart.data.labels = timeLabels;
+                    timeChart.data.datasets[0].data = timeData;
+                    timeChart.update();
+                }
+
+                // Watch for tab changes to initialize/update charts
+                watch(activeTab, (newTab) => {
+                    if (newTab === 'reports') {
+                        // Use setTimeout to ensure DOM elements are available
+                        setTimeout(() => {
+                            if (!statusChart) {
+                                initCharts();
+                            }
+                            updateCharts();
+                        }, 100);
+                    }
+                });
+
+                // Lifecycle hooks
+                onMounted(() => {
+                    loadFromLocalStorage();
+                    
+                    // If no users are selected, show the user modal
+                    if (!currentUser.value) {
+                        showUserModal.value = true;
+                    }
+
+                    // Add some sample data if empty
+                    if (requests.value.length === 0) {
+                        const sampleData = [
+                            {
+                                id: 1,
+                                date: '2023-06-15',
+                                company: 'Acme Corp',
+                                assignedTo: 'User 1',
+                                problem: 'Server downtime',
+                                status: 'Completed',
+                                timeTaken: '3.5h'
+                            },
+                            {
+                                id: 2,
+                                date: '2023-07-20',
+                                company: 'Globex Inc',
+                                assignedTo: 'User 5',
+                                problem: 'Network connectivity issues',
+                                status: 'In Progress',
+                                timeTaken: '2h'
+                            },
+                            {
+                                id: 3,
+                                date: '2023-08-03',
+                                company: 'Initech',
+                                assignedTo: 'User 12',
+                                problem: 'Software bug',
+                                status: 'Pending',
+                                timeTaken: '0h'
+                            }
+                        ];
+                        requests.value = sampleData;
+                        saveToLocalStorage();
+                    }
+                });
+
+                return {
+                    requests,
+                    showAddModal,
+                    showUserModal,
+                    currentRequest,
+                    editingRequest,
+                    searchQuery,
+                    statusFilter,
+                    activeTab,
+                    filteredRequests,
+                    currentUser,
+                    users,
+                    timeTakenHours,
+                    completedRequestsCount,
+                    pendingRequestsCount,
+                    averageCompletionTime,
+                    createRequest,
+                    editRequest,
+                    saveRequest,
+                    deleteRequest,
+                    selectUser,
+                    saveToLocalStorage,
+                    loadFromLocalStorage,
+                    updateCharts
+                };
+            }
+        }).mount('#app')
+    </script>
+<script>document.body.addEventListener('wheel', e => { if (!e.ctrlKey) return; e.preventDefault(); return }, { passive: false })</script>
+	</body>
+</html>
